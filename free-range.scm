@@ -1,145 +1,178 @@
-(use srfi-1)
-(use srfi-13)
 (use ncurses)
 (use posix)
 (use section-combinators)
+(use srfi-1 srfi-13)
 
-(set! SORT_TYPE "NAME ASCENDING")
-
-; parent menu bounds
-(define (PARENT_MIN_X) 0)
-(define (PARENT_MAX_X) (quotient (COLS) 3))
-
-; current menu bounds
-(define (CURRENT_MIN_X) (add1 (PARENT_MAX_X)))
-(define (CURRENT_MAX_X) (* 2 (sub1 (CURRENT_MIN_X))))
-
-; child menu bounds
-(define (CHILD_MIN_X) (add1 (CURRENT_MAX_X)))
-(define (CHILD_MAX_X) (sub1 (COLS)))
-
-; all menus share height
-(define (MENU_MIN_Y) 0)
-(define (MENU_MAX_Y) (sub1 (LINES)))
+;;; Directory Sorting Functions
 
 (define (sort-by sort lst)
   (cond
-    ((equal? sort "NAME ASCENDING") (quicksort lst))))
+    ((equal? sort 'NAME) (sort-names lst))))
 
-(define (quicksort str-lst)
+(define (sort-names lst)
   (cond
-    ((null? str-lst) '())
-    ((= 1 (length str-lst)) str-lst)
+    ((<= (length lst) 1) 
+     lst)
     (#t
-      (let* ((pivot (car str-lst))
-             (lt (filter (left-section string-ci> pivot) str-lst))
-             (gt (filter (left-section string-ci< pivot) str-lst)))
-        (append (quicksort lt) (list pivot) (quicksort gt))))))
+     (let* ((pivot (car lst))
+            (lt (filter (left-section string-ci> pivot) lst))
+            (gt (filter (left-section string-ci< pivot) lst)))
+       (append (sort-names lt) (list pivot) (sort-names gt))))))
 
-(define (draw-menu contents left right bottom top)
-  ; renders directory content to screen
-  ; needs improvement
-  (do ((y bottom (add1 y)))
-      ((>= y top))
+;;; Child awareness functions
 
-      (let ((idx (- y bottom)))
-        (unless (>= idx (length contents))
+(define (child-of dir contents position)
+  (path-append dir (list-ref contents position)))
 
-          (let ((item (list-ref contents idx)))
-            (if (= idx MENU_POS)
-                ; place marker on element at MENU_POS
-                (mvwaddnstr (stdscr) y left (string-append "*" item) (- right left))
-                (mvwaddnstr (stdscr) y left item (- right left))))))))
+(define (path-append path item)
+  (if (equal? path "/")
+      (string-append path item)
+      (string-append path "/" item)))
+
+(define (peek item)
+  (if (and (directory? item) (file-read-access? item))
+      (directory item)
+      (preview item)))
+
+(define (preview file)
+  (list "not implemented"))
+
+;;; All of the state in one place 
+
+(set! SORT 'NAME)
+
+(set! WORKING (current-directory))
+(set! WORKING_CONTENTS (sort-by SORT (directory WORKING)))
+(set! WORKING_POSITION 0)
+
+(set! CHILD (child-of WORKING WORKING_CONTENTS WORKING_POSITION))
+(set! CHILD_CONTENTS (peek CHILD))
+
+(define (update-state sort new-dir new-position)
+  (begin
+    ; setting is likely cheap so no need to never do it
+    (set! SORT sort)
+    (cond 
+      ; changed to parent directory
+      ((equal? new-dir "..")
+       (begin
+         (change-directory "..")
+         (set! WORKING (current-directory))
+         (set! WORKING_CONTENTS (sort-by SORT (directory WORKING)))
+         (set! WORKING_POSITION 0)
+
+         (set! CHILD (child-of WORKING WORKING_CONTENTS WORKING_POSITION))
+         (set! CHILD_CONTENTS (peek CHILD))))
+      
+      ; changed to child directory
+      ((equal? new-dir CHILD)
+       (unless (not (directory? CHILD))
+       (begin
+         (change-directory new-dir)
+         (set! WORKING new-dir)
+         (set! WORKING_CONTENTS (sort-by SORT (directory WORKING)))
+         (set! WORKING_POSITION 0)
+
+         (set! CHILD (child-of WORKING WORKING_CONTENTS WORKING_POSITION))
+         (set! CHILD_CONTENTS (peek CHILD)))))
+
+      ; move cursor up
+      ((< new-position WORKING_POSITION)
+       (set! WORKING_POSITION (max 0 (sub1 WORKING_POSITION)))
+       (set! CHILD (child-of WORKING WORKING_CONTENTS WORKING_POSITION))
+       (set! CHILD_CONTENTS (peek CHILD)))
+
+      ; move cursor down
+      ((> new-position WORKING_POSITION)
+       (set! WORKING_POSITION (min (sub1 (length WORKING_CONTENTS))
+                                   (add1 WORKING_POSITION)))
+       (set! CHILD (child-of WORKING WORKING_CONTENTS WORKING_POSITION))
+       (set! CHILD_CONTENTS (peek CHILD)))
+    )))
 
 (define (handle-key key)
   (cond
-    ; move marker down
-    ((equal? #\j key)
-     ; don't let marker go further than the contents of the directory
-     (set! MENU_POS (min (add1 MENU_POS)
-                         (sub1 (length (directory (current-directory)))))))
-    ; move marker up
-    ((equal? #\k key)
-     ; don't let marker go higher than the first element
-     (set! MENU_POS (max 0 (sub1 MENU_POS))))
-    ; switch to parent directory
-    ((equal? #\h key)
-     (set! MENU_POS 0)
-     (change-directory ".."))
-    ; attempt to enter child
-    ((equal? #\l key)
-     (enter))))
+    ((equal? key #\j)
+     (update-state SORT WORKING (add1 WORKING_POSITION)))
+    ((equal? key #\k)
+     (update-state SORT WORKING (sub1 WORKING_POSITION)))
+    ((equal? key #\h)
+     (update-state SORT ".." #f))
+    ((equal? key #\l)
+     (update-state SORT CHILD #f))))
 
-(define (enter)
-  ; changes to child if it's a directory
-  (let* ((curr-dir (current-directory))
-         (item (list-ref (sort-by SORT_TYPE (directory curr-dir)) MENU_POS))
-         (path (string-append curr-dir "/" item)))
+;;; Functions to get menu dimensions
 
-    (if (and (directory? path) (file-read-access? path))
-        (begin 
-          (change-directory path)
-          (set! MENU_POS 0))
-        (change-directory curr-dir))))
+; parent menu bounds first third of the screen
+(define (PARENT_MIN_X) 0)
+(define (PARENT_MAX_X) (quotient (COLS) 3))
 
-(define (child-contents)
-  ; show the contents of the child
-  ; whether it's a directory or a file
-  (let* ((curr-dir (current-directory))
-         (item (list-ref (sort-by SORT_TYPE (directory curr-dir)) MENU_POS))
-         (path (string-append curr-dir "/" item)))
+; current menu bounds second third of the screen
+(define (WORKING_MIN_X) (add1 (PARENT_MAX_X)))
+(define (WORKING_MAX_X) (* 2 (sub1 (WORKING_MIN_X))))
 
-    (if (and (directory? path) (file-read-access? path))
-        ; show files in child directory
-        (sort-by SORT_TYPE (directory path))
-        ; preview file
-        (preview path))))
+; child menu bounds final third of the screen
+(define (CHILD_MIN_X) (add1 (WORKING_MAX_X)))
+(define (CHILD_MAX_X) (sub1 (COLS)))
 
-(define (preview path)
-  ; will eventually preview text files
-  (list "just kidding"))
+; all menus share height and offset
+(define (MENU_MIN_Y) 1)
+(define (MENU_MAX_Y) (sub1 (LINES)))
 
-(set! MENU_POS 0)
+;;; Rendering functions
 
-(initscr)
-(noecho)
-(cbreak)
-(curs_set 0)
+(define (render-status-bar win)
+  (mvwaddstr win 0 0 WORKING))
 
-(let loop ((win (stdscr)))
-  (wclear win)
-  (draw-menu (sort-by SORT_TYPE (directory (current-directory)))
-             (CURRENT_MIN_X) 
-             (CURRENT_MAX_X) 
-             (MENU_MIN_Y) 
-             (MENU_MAX_Y))
+(define (render-main-menu win)
+  (do ((i (MENU_MIN_Y) (add1 i))
+       (idx 0 (add1 idx)))
+      ((>= idx (min (length WORKING_CONTENTS)
+                    (- (MENU_MAX_Y) (MENU_MIN_Y)))))
+      (if (= idx WORKING_POSITION)
+          (mvwaddstr win i (WORKING_MIN_X) (string-append "*" (list-ref WORKING_CONTENTS idx)))
+          (mvwaddstr win i (WORKING_MIN_X) (list-ref WORKING_CONTENTS idx)))))
 
-  ; don't render parent if we are at the root
-  (unless (equal? "/" (current-directory))
-    (draw-menu (sort-by SORT_TYPE (directory ".."))
-               (PARENT_MIN_X) 
-               (PARENT_MAX_X) 
-               (MENU_MIN_Y) 
-               (MENU_MAX_Y)))
+(define (render-child-menu win)
+  (do ((offset (MENU_MIN_Y) (add1 offset))
+       (idx 0 (add1 idx)))
+      ((>= idx (min (length CHILD_CONTENTS)
+                    (- (MENU_MAX_Y) (MENU_MIN_Y)))))
+      (mvwaddstr win offset (CHILD_MIN_X) (list-ref CHILD_CONTENTS idx))))
 
-  (draw-menu (sort-by SORT_TYPE (child-contents))
-             (CHILD_MIN_X) 
-             (CHILD_MAX_X) 
-             (MENU_MIN_Y) 
-             (MENU_MAX_Y))
 
-  (mvwaddnstr win 0 0 (current-directory) (CHILD_MAX_X))
-  (wrefresh win)
+;;; Run program
 
-  (let ((key (getch)))
-    ; quit when 'q' is pressed
-    (if (not (equal? #\q key))
-        (begin 
-          (handle-key key)
-          (loop win))
-        (begin
-          (echo)
-          (nocbreak)
-          (curs_set 1)
-          (endwin)))))
+(define (setup)
+  (initscr)
+  (noecho)
+  (cbreak)
+  (curs_set 0))
+
+(define (cleanup)
+  (echo)
+  (nocbreak)
+  (curs_set 1)
+  (endwin))
+
+(define (mainloop)
+  (let loop ((win (stdscr)))
+    (wclear win)
+    (render-status-bar win)
+    (render-main-menu win)
+    (render-child-menu win)
+    (wrefresh win)
+
+    (let ((key (getch)))
+      (if (equal? key #\q)
+          (cleanup)
+          (begin
+            (handle-key key)
+            (loop win))))))
+
+(define (main)
+  (setup)
+  (mainloop))
+
+(main)
 
