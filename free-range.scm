@@ -1,6 +1,10 @@
+(use srfi-1)
 (use srfi-13)
 (use ncurses)
 (use posix)
+(use section-combinators)
+
+(set! SORT_TYPE "NAME ASCENDING")
 
 ; parent menu bounds
 (define (PARENT_MIN_X) 0)
@@ -17,6 +21,20 @@
 ; all menus share height
 (define (MENU_MIN_Y) 0)
 (define (MENU_MAX_Y) (sub1 (LINES)))
+
+(define (sort-by sort lst)
+  (cond
+    ((equal? sort "NAME ASCENDING") (quicksort lst))))
+
+(define (quicksort str-lst)
+  (cond
+    ((null? str-lst) '())
+    ((= 1 (length str-lst)) str-lst)
+    (#t
+      (let* ((pivot (car str-lst))
+             (lt (filter (left-section string-ci> pivot) str-lst))
+             (gt (filter (left-section string-ci< pivot) str-lst)))
+        (append (quicksort lt) (list pivot) (quicksort gt))))))
 
 (define (draw-menu contents left right bottom top)
   ; renders directory content to screen
@@ -55,7 +73,7 @@
 (define (enter)
   ; changes to child if it's a directory
   (let* ((curr-dir (current-directory))
-         (item (list-ref (directory curr-dir) MENU_POS))
+         (item (list-ref (sort-by SORT_TYPE (directory curr-dir)) MENU_POS))
          (path (string-append curr-dir "/" item)))
 
     (if (and (directory? path) (file-read-access? path))
@@ -68,12 +86,12 @@
   ; show the contents of the child
   ; whether it's a directory or a file
   (let* ((curr-dir (current-directory))
-         (item (list-ref (directory curr-dir) MENU_POS))
+         (item (list-ref (sort-by SORT_TYPE (directory curr-dir)) MENU_POS))
          (path (string-append curr-dir "/" item)))
 
     (if (and (directory? path) (file-read-access? path))
         ; show files in child directory
-        (directory path)
+        (sort-by SORT_TYPE (directory path))
         ; preview file
         (preview path))))
 
@@ -90,7 +108,7 @@
 
 (let loop ((win (stdscr)))
   (wclear win)
-  (draw-menu (directory (current-directory)) 
+  (draw-menu (sort-by SORT_TYPE (directory (current-directory)))
              (CURRENT_MIN_X) 
              (CURRENT_MAX_X) 
              (MENU_MIN_Y) 
@@ -98,13 +116,13 @@
 
   ; don't render parent if we are at the root
   (unless (equal? "/" (current-directory))
-    (draw-menu (directory "..")
+    (draw-menu (sort-by SORT_TYPE (directory ".."))
                (PARENT_MIN_X) 
                (PARENT_MAX_X) 
                (MENU_MIN_Y) 
-               (MENU_MAX_Y))
+               (MENU_MAX_Y)))
 
-  (draw-menu (child-contents)
+  (draw-menu (sort-by SORT_TYPE (child-contents))
              (CHILD_MIN_X) 
              (CHILD_MAX_X) 
              (MENU_MIN_Y) 
