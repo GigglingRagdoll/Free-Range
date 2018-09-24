@@ -127,6 +127,9 @@
 (define (MENU_MIN_Y) 1)
 (define (MENU_MAX_Y) (sub1 (LINES)))
 
+(define (SCROLL_POINT)
+  (- (quotient (- (MENU_MAX_Y) (MENU_MIN_Y)) 2) (MENU_MIN_Y)))
+
 ;;; Rendering functions
 
 (define (render-status-bar win)
@@ -143,9 +146,15 @@
         ((>= idx (min (length WORKING_CONTENTS)
                       (- max-y min-y))))
 
-        (let ((item (list-ref WORKING_CONTENTS idx)))
+        (let* ((drop-num (cond
+                           ;((> WORKING_POSITION (- max-y min-y))
+                           ; (- WORKING_POSITION (- max-y min-y)))
+                           ((> WORKING_POSITION (SCROLL_POINT))
+                            (- WORKING_POSITION (SCROLL_POINT)))
+                           (#t 0)))
+               (item (list-ref (drop WORKING_CONTENTS drop-num) idx)))
           (cond
-            ((= idx WORKING_POSITION)
+            ((= idx (- WORKING_POSITION drop-num))
              (mvwaddstr win offset min-x "*")
              (mvwaddnstr win offset (add1 min-x) item (- max-x min-x 1)))
             (#t
@@ -177,6 +186,15 @@
                   (list-ref CHILD_CONTENTS idx) 
                   (- (CHILD_MAX_X) (CHILD_MIN_X)))))
 
+(define (render-debug win)
+  (mvwaddstr win (sub1 (LINES)) 0 
+             (format #f 
+                     "pos: ~A lines: ~A scroll: ~A" 
+                     WORKING_POSITION
+                     (- (MENU_MAX_Y) (MENU_MIN_Y))
+                     (SCROLL_POINT)
+                     )))
+
 (define (format-file-size size)
   (let loop ((conversion size)
              (suffix '("B" "K" "M" "G" "T" "P")))
@@ -204,6 +222,7 @@
     (render-status-bar win)
     (render-main-menu win)
     (render-child-menu win)
+    (render-debug win)
     (wrefresh win)
 
     (let ((key (getch)))
