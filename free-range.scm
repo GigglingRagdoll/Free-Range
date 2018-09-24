@@ -30,12 +30,18 @@
       (string-append path "/" item)))
 
 (define (peek item)
-  (if (and (directory? item) (file-read-access? item))
+  (if (can-enter? item)
       (directory item)
       (preview item)))
 
 (define (preview file)
-  (list "not implemented"))
+  (if (file-read-access? file)
+      (list "not implemented")
+      (list "permission denied")))
+
+(define (can-enter? file)
+  (and (directory? file) 
+       (file-read-access? file)))
 
 ;;; All of the state in one place 
 
@@ -57,6 +63,7 @@
       ((equal? new-dir "..")
        (begin
          (change-directory "..")
+
          (set! WORKING (current-directory))
          (set! WORKING_CONTENTS (sort-by SORT (directory WORKING)))
          (set! WORKING_POSITION 0)
@@ -66,15 +73,16 @@
       
       ; changed to child directory
       ((equal? new-dir CHILD)
-       (unless (not (directory? CHILD))
-       (begin
-         (change-directory new-dir)
-         (set! WORKING new-dir)
-         (set! WORKING_CONTENTS (sort-by SORT (directory WORKING)))
-         (set! WORKING_POSITION 0)
+       (unless (not (can-enter? CHILD))
+         (begin
+           (change-directory new-dir)
 
-         (set! CHILD (child-of WORKING WORKING_CONTENTS WORKING_POSITION))
-         (set! CHILD_CONTENTS (peek CHILD)))))
+           (set! WORKING new-dir)
+           (set! WORKING_CONTENTS (sort-by SORT (directory WORKING)))
+           (set! WORKING_POSITION 0)
+
+           (set! CHILD (child-of WORKING WORKING_CONTENTS WORKING_POSITION))
+           (set! CHILD_CONTENTS (peek CHILD)))))
 
       ; move cursor up
       ((< new-position WORKING_POSITION)
@@ -125,21 +133,56 @@
   (mvwaddstr win 0 0 WORKING))
 
 (define (render-main-menu win)
-  (do ((i (MENU_MIN_Y) (add1 i))
-       (idx 0 (add1 idx)))
-      ((>= idx (min (length WORKING_CONTENTS)
-                    (- (MENU_MAX_Y) (MENU_MIN_Y)))))
-      (if (= idx WORKING_POSITION)
-          (mvwaddstr win i (WORKING_MIN_X) (string-append "*" (list-ref WORKING_CONTENTS idx)))
-          (mvwaddstr win i (WORKING_MIN_X) (list-ref WORKING_CONTENTS idx)))))
+  (let ((min-x (WORKING_MIN_X))
+        (max-x (WORKING_MAX_X))
+        (min-y (MENU_MIN_Y))
+        (max-y (MENU_MAX_Y)))
+
+    (do ((offset min-y (add1 offset))
+         (idx 0 (add1 idx)))
+        ((>= idx (min (length WORKING_CONTENTS)
+                      (- max-y min-y))))
+
+        (let ((item (list-ref WORKING_CONTENTS idx)))
+          (cond
+            ((= idx WORKING_POSITION)
+             (mvwaddstr win offset min-x "*")
+             (mvwaddnstr win offset (add1 min-x) item (- max-x min-x 1)))
+            (#t
+             (mvwaddnstr win offset min-x item (- max-x min-x))))
+
+          (let* ((path (path-append WORKING item))
+                 (size 
+                   (unless (not (can-enter? path))
+                     (length (directory path)))))
+            (cond
+              ((symbolic-link? path)
+               (let ((output (format #f "-> ~A" size)))
+                 (mvwaddstr win offset (- max-x (string-length output)) output)))
+              ((directory? path)
+               (let ((output (format #f " ~A" size)))
+                 (mvwaddstr win offset (- max-x (string-length output)) output)))
+              (#t
+               (let ((output (format #f " ~A" (format-file-size (file-size path)))))
+                 (mvwaddstr win offset (- max-x (string-length output)) output)))
+               ))))))
 
 (define (render-child-menu win)
   (do ((offset (MENU_MIN_Y) (add1 offset))
        (idx 0 (add1 idx)))
       ((>= idx (min (length CHILD_CONTENTS)
                     (- (MENU_MAX_Y) (MENU_MIN_Y)))))
-      (mvwaddstr win offset (CHILD_MIN_X) (list-ref CHILD_CONTENTS idx))))
+      (mvwaddnstr win offset 
+                  (CHILD_MIN_X) 
+                  (list-ref CHILD_CONTENTS idx) 
+                  (- (CHILD_MAX_X) (CHILD_MIN_X)))))
 
+(define (format-file-size size)
+  (let loop ((conversion size)
+             (suffix '("B" "K" "M" "G" "T" "P")))
+    (if (< conversion 1024)
+        (format #f "~A ~A" conversion (car suffix))
+        (loop (/ conversion 1024) (cdr suffix)))))
 
 ;;; Run program
 
