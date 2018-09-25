@@ -154,6 +154,11 @@
 
 ;;; Rendering functions
 
+(define (stop-rendering? contents idx size)
+  ; stop drawing content if there are no more items in the directory
+        ;              ; or if we ran out of screen space
+  (>= idx (min size (length contents))))
+
 (define (render-status-bar win)
   ; simply shows the working directory at the top of the screen
   (mvwaddstr win 0 0 WORKING))
@@ -174,10 +179,8 @@
          ; respect to the contents of the working directory
          (idx 0 (add1 idx)))
         
-        ; stop drawing content if there are no more items in the directory
-        ((>= idx (min (length WORKING_CONTENTS)
-                      ; or if we ran out of screen space
-                      (- max-y min-y))))
+        ; check to see if we are done rendering
+        ((stop-rendering? WORKING_CONTENTS idx (- max-y min-y)))
 
         (let* ((drop-num (cond
                            ; drop a constant number of elements when we get near the bottom 
