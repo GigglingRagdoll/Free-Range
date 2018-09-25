@@ -22,17 +22,28 @@
             (gt (filter (left-section string-ci< pivot) lst)))
        (append (sort-names lt) (list pivot) (sort-names gt))))))
 
-;;; Child awareness functions
-
-(define (child-of dir contents position)
-  ; gets the path of what the marker is currently over
-  (path-append dir (list-ref contents position)))
+;;; Convenience Functions
 
 (define (path-append path item)
   ; convenience function that glues paths together
   (if (equal? path "/")
       (string-append path item)
       (string-append path "/" item)))
+
+(define (format-file-size size)
+  ; converts file-size from bytes to more palatable value
+  (let loop ((conversion size)
+             ; from bytes to all the way to petabytes
+             (suffix '("B" "K" "M" "G" "T" "P")))
+    (if (< conversion 1024)
+        (format #f "~A ~A" conversion (car suffix))
+        (loop (/ conversion 1024) (cdr suffix)))))
+
+;;; Child awareness functions
+
+(define (child-of dir contents position)
+  ; gets the path of what the marker is currently over
+  (path-append dir (list-ref contents position)))
 
 (define (peek item)
   ; returns contents of child if it's a directory
@@ -239,15 +250,6 @@
                      (- (MENU_MAX_Y) (MENU_MIN_Y))
                      (SCROLL_POINT)
                      )))
-
-(define (format-file-size size)
-  ; converts file-size from bytes to more palatable value
-  (let loop ((conversion size)
-             ; from bytes to all the way to petabytes
-             (suffix '("B" "K" "M" "G" "T" "P")))
-    (if (< conversion 1024)
-        (format #f "~A ~A" conversion (car suffix))
-        (loop (/ conversion 1024) (cdr suffix)))))
 
 ;;; Run program
 
