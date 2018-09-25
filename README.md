@@ -2,7 +2,7 @@
 Free-Range is an NCurses filesystem viewer written in Chicken Scheme. 
 
 Current Issues:
-- Crashes upon entering and empty directory
+- Crashes upon entering an empty directory
 - Scrolling to the end of large directories causes crashes
 
 Next Steps:
