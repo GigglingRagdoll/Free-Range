@@ -75,10 +75,10 @@
 (define (render-item win y x-min x-max path wi index) 
   (if (= wi index)
       (begin
-        (mvwaddnstr win y (add1 x-min) (car (reverse (string-split path "/"))) x-max)
+        (mvwaddnstr win y (add1 x-min) (car (reverse (string-split path "/"))) (- x-max x-min))
         (mvwaddstr win y x-min "*"))
 
-      (mvwaddnstr win y x-min (car (reverse (string-split path "/"))) x-max)))
+      (mvwaddnstr win y x-min (car (reverse (string-split path "/"))) (- x-max x-min))))
 
 (define (stop-rendering? contents index bbound tbound)
   (or (> index (sub1 (length contents)))
