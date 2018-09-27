@@ -14,6 +14,7 @@
 
 (define (render-all win state)
   (render-top-bar win state)
+  (render-parent-menu win (parent-left-bound) (parent-right-bound) state)
   (render-working-menu win (working-left-bound) (working-right-bound) state)
   (render-child-menu win (child-left-bound) (child-right-bound) state))
 
@@ -36,7 +37,22 @@
           wi index))))
 
 (define (render-parent-menu win lbound rbound state)
-  '())
+  (let ((wd (free-range-working-directory state))
+        (wc (free-range-working-contents state))
+        (wi (free-range-working-index state))
+        (pd (free-range-parent-directory state))
+        (pc (free-range-parent-contents state)))
+
+    (unless (equal? wd "/")
+      (do ((offset (menu-top-bound) (add1 offset))
+           (index  0 (add1 index)))
+          ((stop-rendering? pc index (menu-bottom-bound) (menu-top-bound)))
+
+          (render-item
+            win
+            offset lbound rbound
+            (path-append pd (list-ref pc index))
+            wi -1)))))
 
 (define (render-child-menu win lbound rbound state)
   (let ((wd (free-range-working-directory state))
@@ -45,15 +61,16 @@
         (c  (free-range-child state))
         (cc (free-range-child-contents state)))
 
-    (do ((offset (menu-top-bound) (add1 offset))
-         (index  0 (add1 index)))
-        ((stop-rendering? cc index (menu-bottom-bound) (menu-top-bound)))
+    (unless (equal? wc '(""))
+      (do ((offset (menu-top-bound) (add1 offset))
+           (index  0 (add1 index)))
+          ((stop-rendering? cc index (menu-bottom-bound) (menu-top-bound)))
 
-        (render-item
-          win
-          offset lbound rbound
-          (path-append c (list-ref cc index))
-          wi -1))))
+          (render-item
+            win
+            offset lbound rbound
+            (path-append c (list-ref cc index))
+            wi -1)))))
 
 (define (render-item win y x-min x-max path wi index) 
   (if (= wi index)

@@ -44,11 +44,19 @@
   ; get all contents of the working directory
   (free-range-working-contents-set!
     state 
-    (directory (free-range-working-directory state)))
+    (directory* (free-range-working-directory state)))
 
   ; reset index
   (free-range-working-index-set!
     state 0)
+
+  ; get parent directory
+  (free-range-parent-directory-set!
+    state (parent-of (free-range-working-directory state)))
+
+  ; get parent contents
+  (free-range-parent-contents-set!
+    state (directory* (free-range-parent-directory state)))
 
   ; reset the child with respect to the index
   (free-range-child-set!
