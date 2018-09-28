@@ -3,14 +3,20 @@
 
 (load "state.scm")
 
+; parent menu occupies left third of screen
 (define (parent-left-bound)   0)
 (define (parent-right-bound)  (quotient (COLS) 3))
+; working menu occupies middle third of screen
 (define (working-left-bound)  (add1 (parent-right-bound)))
 (define (working-right-bound) (* 2 (parent-right-bound)))
+; child menu occupies right third of screen
 (define (child-left-bound)    (add1 (working-right-bound)))
 (define (child-right-bound)   (sub1 (COLS)))
+; each menu is offset a bit from the top and bottom
 (define (menu-top-bound)      2)
 (define (menu-bottom-bound)   (sub1 (LINES)))
+; the point at which menu should start scrolling
+(define (scroll-point)        (quotient (LINES) 2))
 
 (define (render-all win state)
   (render-top-bar win state)
@@ -73,12 +79,23 @@
             wi -1)))))
 
 (define (render-item win y x-min x-max path wi index) 
-  (if (= wi index)
-      (begin
-        (mvwaddnstr win y (add1 x-min) (car (reverse (string-split path "/"))) (- x-max x-min))
-        (mvwaddstr win y x-min "*"))
+  (let ((item (car (reverse (string-split path "/"))))
+        (info ""))
 
-      (mvwaddnstr win y x-min (car (reverse (string-split path "/"))) (- x-max x-min))))
+    (if (= wi index)
+        (begin
+          (mvwaddnstr win y (add1 x-min) item (- x-max x-min))
+          (mvwaddstr win y x-min "*"))
+        (mvwaddnstr win y x-min item (- x-max x-min)))
+
+    (when (symbolic-link? path)
+      (set! info (format #f "~A~A" "-> " info)))
+
+    (when (can-enter? path)
+      (set! info (format #f "~A~A" info (length (directory path)))))
+
+    (mvwaddstr win y (- x-max (string-length info)) info)
+  ))
 
 (define (stop-rendering? contents index bbound tbound)
   (or (> index (sub1 (length contents)))
